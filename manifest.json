@@ -1,0 +1,10 @@
+{
+	"id": "obsidian-query-list",
+	"name": "Query List",
+	"version": "1.0.1",
+	"minAppVersion": "0.9.12",
+	"description": "This plugin does queries and write them down on file as a list",
+	"author": "Strooper1234",
+	"authorUrl": "",
+	"isDesktopOnly": false
+}
