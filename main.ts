@@ -4,6 +4,7 @@ interface MyPluginSettings {
 	//mySetting: string;
 	QUERY_TAG: string;
 	QUERY_KEYPHRASE: string;
+	QUERY_KEYPHRASE_END: string;
 }
 
 interface queryInfo {
@@ -15,7 +16,8 @@ interface queryInfo {
 const DEFAULT_SETTINGS: MyPluginSettings = {
 	//mySetting: 'default',
 	QUERY_TAG: 'query',
-	QUERY_KEYPHRASE: "<!-- QUERY:"
+	QUERY_KEYPHRASE: "<!-- QUERY:",
+	QUERY_KEYPHRASE_END: "-->"
 }
 
 
@@ -111,7 +113,15 @@ export default class MyPlugin extends Plugin {
 		let start_i = 0
 		for (let i = 0; i < data_arr.length; i++) {
 			if (data_arr[i].startsWith(this.settings.QUERY_KEYPHRASE)) {
-				let resp = await this.searchQuery(data_arr[i], all_files);
+				//let j = i;
+				let query = data_arr[i];
+				while (!data_arr[i].includes("-->") && i < data_arr.length) {
+					i++;
+					query += "\n" + data_arr[i];
+				}
+				console.log(query)
+				let resp = await this.searchQuery(query, all_files);
+				console.log(resp);
 				if (resp["message"] == "END") {
 					
 					full_queries.push({
@@ -143,45 +153,70 @@ export default class MyPlugin extends Plugin {
 		
 	}
 
-	async searchQuery(query: string, query_files: TFile[]) {
+	async searchQuery(query_full: string, query_files: TFile[]) {
 		/* 
-		Queries examples:
-			- list from <source> # not implemeted yet
-			- list tag #<tag>
+		Queries example:
+			- <!-- QUERY: <source> --> 
+				it would look like this if you want to search for the tag #book
+				the last QUERY its black, which means its the end of the query block
+				and that it should not write anything else after that.
+
+				<!-- QUERY: #book -->
+
+				<!-- QUERY: --> 
 		*/
-		query = query.slice(query.indexOf('"') + 1, query.lastIndexOf('"')).trim();
-		let query_arr = query.split(" ");
+		let query_full_trim = query_full.replace(this.settings.QUERY_KEYPHRASE, "").replace(this.settings.QUERY_KEYPHRASE_END, "").trim();
+		//console.log(query + ", l = " + query.length);
+		// query = query_full.slice(query_full.indexOf('"') + 1, query_full.lastIndexOf('"')).trim();
+		// let query_arr = query.split(" ");
+		//let re = "* -- $file_name -- ".replace(/\$file_name/gi, "markdown file name")
+		
 
 		let response_list = []; // ← store each of the files found
 		let message = "failed"; // ← message should be START or END 
 								// depending of what piece of the query it is
-		
-		if (query_arr[0] == "end") {
-			message = "END"
-		}
-		else if (query_arr[0] == "list") {
-			
-			if (query_arr[1] == "tag") {
-				// check if any of the files have the tag
-				for (let i = 0; i < query_files.length; i++) {
-					
-					let temp = await this.app.vault.read(query_files[i]);
-					let temp_arr = temp.split("\n");
-					for (let j = 0; j < temp_arr.length; j++) {
-						let line = temp_arr[j];
-						if (!line.startsWith(this.settings.QUERY_KEYPHRASE) && line.includes(query_arr[2])) {
-							// append the result to reponse_list 
-							// and add the '*' to make it a list
-							response_list.push("* [[" + query_files[i].basename + "]]")
-						}
-
-					}
+		let query_arr = query_full_trim.split("\n");
+		let query = query_arr[0];
+		let query_format = "* [[$file_name]]";
+		if (query_arr.length > 1) {
+			for (let i = 1; i < query_arr.length; i++) {
+				if (query_arr[i].startsWith("# ")) {
+					response_list.push(query_arr[i].replace("# ", ""))
+				} else {
+					query_format = query_arr[i];
 				}
 			}
-			// response_list.push(""); // add an empty line at the end
-			message = "START";
 		}
+		console.log(query_format);
 		
+
+		if (query == "") {
+			message = "END"
+		} else {
+			// check if any of the files have the tag
+			for (let i = 0; i < query_files.length; i++) {
+					
+				let temp = await this.app.vault.read(query_files[i]);
+				let temp_arr = temp.split("\n");
+				for (let j = 0; j < temp_arr.length; j++) {
+					let line = temp_arr[j];
+					if (!line.startsWith(this.settings.QUERY_KEYPHRASE) && line.includes(query)) {
+						// append the result to reponse_list 
+						// and add the '*' to make it a list
+						let item = query_format
+							.replace(/\$file_name/gi, query_files[i].basename)
+							.replace(/\$c_time/gi, new Date(query_files[i].stat.ctime).toString());
+						
+						let t = query_files[i].stat.ctime;
+						
+						response_list.push(item);
+					}
+
+				}
+				message = "START";
+			}
+		}
+
 		let response = {
 			"message": message,
 			"data": response_list
